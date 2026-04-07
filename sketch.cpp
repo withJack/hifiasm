@@ -7,6 +7,7 @@
 #include "ksort.h"
 #include "Correct.h"
 #include "kalloc.h"
+#include "anno.h"
 
 #define MAX_HIGH_OCC     8   // TODO: don't hard code if we need to tune this parameter
 #define MAX_MAX_HIGH_OCC 16
@@ -576,6 +577,15 @@ void sf##_ha_sketch(const char *str, int len, int w, int k, uint32_t rid, int is
     if (dp_min_len > 0 && pt && mt) sf##_refine_sketch(p, pt, len, dp_min_len, dp_e, min_freq, mt, km);\
 	for (i = 0; i < (int)p->n; ++i) /**populate .rid as this was keeping counts**/\
 		p->a[i].rid = rid;\
+    /* Annotation post-filter: keep only minimizers at atype==1 positions */\
+    if (ha_anno_active && ha_anno) {\
+        int32_t sn = 0;\
+        for (i = 0; i < (int)p->n; ++i) {\
+            if (anno_query(ha_anno, (int64_t)p->a[i].rid, (int32_t)p->a[i].pos) == 1)\
+                p->a[sn++] = p->a[i];\
+        }\
+        p->n = sn;\
+    }\
 }
 
 HA_SC_INIT(mz1, ha_mz1_t, ha_mz1_v, 28, 27)

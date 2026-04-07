@@ -13,6 +13,7 @@
 #include "rcut.h"
 #include "kalloc.h"
 #include "ecovlp.h"
+#include "anno.h"
 
 void ha_get_candidates_interface(ha_abuf_t *ab, int64_t rid, UC_Read *ucr, overlap_region_alloc *overlap_list, overlap_region_alloc *overlap_list_hp, Candidates_list *cl, double bw_thres, 
 int max_n_chain, int keep_whole_chain, kvec_t_u8_warp* k_flag, kvec_t_u64_warp* chain_idx, ma_hit_t_alloc* paf, ma_hit_t_alloc* rev_paf, overlap_region* f_cigar, kvec_t_u64_warp* dbg_ct, st_mt_t *sp);
@@ -1006,6 +1007,13 @@ void ha_ec(int64_t round, int num_pround, int des_idx, uint64_t *tot_b, uint64_t
 	if(ha_idx == NULL) {
         ha_idx = ha_pt_gen(&asm_opt, ha_flt_tab, round == 0? 0 : 1, 0, &R_INF, &hom_cov, &het_cov); // build the index
         asm_opt.hom_cov = hom_cov; asm_opt.het_cov = het_cov;
+    }
+    /* load annotations after ha_pt_gen has populated R_INF names (first round only) */
+    if (round == 0 && ha_anno == NULL && asm_opt.fn_anno) {
+        if (anno_load(asm_opt.fn_anno, R_INF.total_reads) < 0) {
+            fprintf(stderr, "[E::%s] failed to load annotation file; aborting\n", __func__);
+            exit(1);
+        }
     }
 	///debug_adapter(&asm_opt, &R_INF);
     if (round == 0 && ha_flt_tab == 0) // then asm_opt.hom_cov hasn't been updated
@@ -2104,7 +2112,12 @@ int ha_assemble(void)
 		// overlap between corrected reads
 		ha_opt_reset_to_round(&asm_opt, asm_opt.number_of_round);
 		// ha_overlap_final();
+        if (ha_anno) {
+			ha_anno_active = 1;
+			fprintf(stderr, "[M::%s] annotation post-filter ACTIVE for final overlap round\n", __func__);
+		}
         ha_ec_ff(1/**0**/);
+		ha_anno_active = 0;
         fprintf(stderr, "[M::%s::%.3f*%.2f@%.3fGB] ==> found overlaps for the final round\n", __func__, yak_realtime(), yak_cpu_usage(), yak_peakrss_in_gb());
 		// fprintf(stderr, "\n[M::%s::%.3f*%.2f@%.3fGB] ==> found overlaps for the final round\n", __func__, yak_realtime(), yak_cpu_usage(), yak_peakrss_in_gb());
 		// ha_print_ovlp_stat(R_INF.paf, R_INF.reverse_paf, R_INF.total_reads);
@@ -2120,6 +2133,7 @@ int ha_assemble(void)
     build_string_graph_without_clean(asm_opt.min_overlap_coverage, R_INF.paf, R_INF.reverse_paf, 
         R_INF.total_reads, R_INF.read_length, asm_opt.min_overlap_Len, asm_opt.max_hang_Len, asm_opt.clean_round, 
         asm_opt.gap_fuzz, asm_opt.min_drop_rate, asm_opt.max_drop_rate, asm_opt.output_file_name, asm_opt.large_pop_bubble_size, 0, !ovlp_loaded);
+	if (ha_anno) { anno_destroy(ha_anno); ha_anno = NULL; }
 	destory_All_reads(&R_INF);
 	return 0;
 }
