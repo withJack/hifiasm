@@ -1,13 +1,13 @@
 CXX=		g++
 CC=			gcc
-CXXFLAGS=	-g -O3 -msse4.2 -mpopcnt -fomit-frame-pointer -Wall
+CXXFLAGS=	-g -O3 -msse4.2 -mpopcnt -fomit-frame-pointer -Wall -Wno-misleading-indentation -Wno-maybe-uninitialized -Wno-unused-result
 CFLAGS=		$(CXXFLAGS)
 CPPFLAGS=
 INCLUDES=
 OBJS=		CommandLines.o Process_Read.o Assembly.o Hash_Table.o \
 			POA.o Correct.o Levenshtein_distance.o Overlaps.o Trio.o kthread.o Purge_Dups.o \
 			htab.o hist.o sketch.o anchor.o extract.o sys.o hic.o rcut.o horder.o ecovlp.o\
-			tovlp.o inter.o kalloc.o gfa_ut.o gchain_map.o
+			tovlp.o inter.o kalloc.o gfa_ut.o gchain_map.o anno.o
 EXE=		hifiasm
 LIBS=		-lz -lpthread -lm
 
@@ -81,3 +81,4 @@ inter.o: inter.h Process_Read.h
 kalloc.o: kalloc.h
 gfa_ut.o: Overlaps.h
 gchain_map.o: gchain_map.h
+anno.o: anno.h
