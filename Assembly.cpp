@@ -13,6 +13,7 @@
 #include "rcut.h"
 #include "kalloc.h"
 #include "ecovlp.h"
+#include "anno.h"
 
 void ha_get_candidates_interface(ha_abuf_t *ab, int64_t rid, UC_Read *ucr, overlap_region_alloc *overlap_list, overlap_region_alloc *overlap_list_hp, Candidates_list *cl, double bw_thres, 
 int max_n_chain, int keep_whole_chain, kvec_t_u8_warp* k_flag, kvec_t_u64_warp* chain_idx, ma_hit_t_alloc* paf, ma_hit_t_alloc* rev_paf, overlap_region* f_cigar, kvec_t_u64_warp* dbg_ct, st_mt_t *sp);
@@ -2078,11 +2079,32 @@ int ha_assemble(void)
         if((asm_opt.flag & HA_F_VERBOSE_GFA)) load_pt_index(&ha_flt_tab, &ha_idx, &R_INF, &asm_opt, asm_opt.output_file_name), load_ct_index(&ha_ct_table, asm_opt.output_file_name);
 
 		// construct hash table for high occurrence k-mers
-		if (!(asm_opt.flag & HA_F_NO_KMER_FLT) && ha_flt_tab == NULL) 
+				/* Phase A: parse annotation file into name-keyed hash map */
+		if (asm_opt.fn_anno) {
+			if (anno_parse_file(asm_opt.fn_anno) < 0) {
+				fprintf(stderr, "[E::%s] failed to parse annotation file; aborting\n", __func__);
+				exit(1);
+			}
+		}
+
+if (!(asm_opt.flag & HA_F_NO_KMER_FLT) && ha_flt_tab == NULL) 
         {
 			ha_flt_tab = ha_ft_gen(&asm_opt, &R_INF, &hom_cov, 0, 0);
 			ha_opt_update_cov(&asm_opt, hom_cov);
 		}
+		/* Phase B: re-scan FASTQ to assign annotations to read IDs */
+		if (asm_opt.fn_anno) {
+			if (anno_assign_rids(asm_opt.num_reads, asm_opt.read_file_names,
+					R_INF.total_reads, asm_opt.adapterLen,
+					asm_opt.rl_cut, asm_opt.is_sc, asm_opt.sc_cut) < 0) {
+				fprintf(stderr, "[E::%s] failed to assign annotations; aborting\n", __func__);
+				exit(1);
+			}
+			anno_free_map();
+			ha_anno_active = 1;
+			fprintf(stderr, "[M::%s] annotation post-filter ACTIVE from first index build\n", __func__);
+		}
+
 		// error correction
 		assert(asm_opt.number_of_round > 0);
 		for (r = ha_idx?asm_opt.number_of_round-1:0; r < asm_opt.number_of_round; ++r) {
@@ -2104,7 +2126,17 @@ int ha_assemble(void)
 		// overlap between corrected reads
 		ha_opt_reset_to_round(&asm_opt, asm_opt.number_of_round);
 		// ha_overlap_final();
-        ha_ec_ff(1/**0**/);
+        {
+			int saved_hom_cov = asm_opt.hom_cov;
+			int saved_het_cov = asm_opt.het_cov;
+	        ha_ec_ff(1/**0**/);
+			if (ha_anno) {
+				asm_opt.hom_cov = saved_hom_cov;
+				asm_opt.het_cov = saved_het_cov;
+				fprintf(stderr, "[M::%s] restored coverage values: hom_cov=%d, het_cov=%d\n",
+						__func__, asm_opt.hom_cov, asm_opt.het_cov);
+			}
+		}
         fprintf(stderr, "[M::%s::%.3f*%.2f@%.3fGB] ==> found overlaps for the final round\n", __func__, yak_realtime(), yak_cpu_usage(), yak_peakrss_in_gb());
 		// fprintf(stderr, "\n[M::%s::%.3f*%.2f@%.3fGB] ==> found overlaps for the final round\n", __func__, yak_realtime(), yak_cpu_usage(), yak_peakrss_in_gb());
 		// ha_print_ovlp_stat(R_INF.paf, R_INF.reverse_paf, R_INF.total_reads);
@@ -2120,6 +2152,7 @@ int ha_assemble(void)
     build_string_graph_without_clean(asm_opt.min_overlap_coverage, R_INF.paf, R_INF.reverse_paf, 
         R_INF.total_reads, R_INF.read_length, asm_opt.min_overlap_Len, asm_opt.max_hang_Len, asm_opt.clean_round, 
         asm_opt.gap_fuzz, asm_opt.min_drop_rate, asm_opt.max_drop_rate, asm_opt.output_file_name, asm_opt.large_pop_bubble_size, 0, !ovlp_loaded);
+	if (ha_anno) { anno_destroy(ha_anno); ha_anno = NULL; }
 	destory_All_reads(&R_INF);
 	return 0;
 }

@@ -170,6 +170,8 @@ typedef struct {
     int64_t rl_cut;
     int64_t sc_cut;
 
+    char *fn_anno; /* annotation file for guided minimizer sampling */
+
 } hifiasm_opt_t;
 
 extern hifiasm_opt_t asm_opt;
